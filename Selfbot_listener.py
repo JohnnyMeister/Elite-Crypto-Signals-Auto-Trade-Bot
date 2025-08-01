@@ -1,64 +1,55 @@
 # Selfbot_listener.py
+
 import discord
-from signal_parser import parse_signal
-from telegram_alert import send_telegram_message
-from trader import execute_trade
 import logging
+from signal_parser import parse_signal
+from trader import execute_trade
+from telegram_alert import send_telegram_message
+import asyncio
 
 logging.basicConfig(level=logging.INFO)
 
 class MyClient(discord.Client):
-    def __init__(self, canal_id, config, **options):
-        super().__init__(**options)
+    def __init__(self, canal_id, config, **kwargs):
+        super().__init__(**kwargs)
         self.canal_id = canal_id
         self.config = config
 
     async def on_ready(self):
-        logging.info(f'✅ Logado como {self.user}')
+        logging.info(f"🤖 Ligado como {self.user} (ID: {self.user.id})")
 
     async def on_message(self, message):
         if message.author.id == self.user.id:
-            return  # Ignora mensagens do próprio user
+            return
 
         if message.channel.id != self.canal_id:
             return
 
-        logging.info(f"📩 Mensagem recebida: {message.content[:80]}...")
+        logging.info(f"📥 Nova mensagem recebida de {message.author}: {message.content[:60]}...")
 
         parsed = parse_signal(message.content)
         if not parsed:
-            logging.info("⚠️ Nenhum sinal válido encontrado nesta mensagem.")
+            logging.warning("❌ Nenhum sinal válido foi extraído.")
             return
 
-        logging.info(f"📊 Sinal válido encontrado: {parsed}")
+        result = execute_trade(
+            pair=parsed["pair"],
+            entry_price=parsed["entry"],
+            targets=parsed["targets"],
+            stop_loss=parsed["stop_loss"]
+        )
 
-        try:
-            result = execute_trade(
-                pair=parsed['pair'],
-                entry_price=parsed['price'],
-                targets=parsed.get('targets'),
-                stop_loss=parsed.get('stop_loss')
-            )
-            alert_message = (
-                f"💰 Trade executada: {parsed['pair']} a {parsed['price']}\n"
-                f"TP: {parsed.get('targets')}\nSL: {parsed.get('stop_loss')}\n"
-                f"Modo teste: {self.config['test_mode']}\nResultado: {result}"
-            )
-        except Exception as e:
-            alert_message = f"❌ Falha ao executar trade para {parsed['pair']}: {str(e)}"
+        notify = f"📈 Sinal executado: {parsed['pair']} — {result}"
+        logging.info(notify)
 
-        send_telegram_message(self.config, alert_message)
-
+        if self.config.get("telegram_token") and self.config.get("telegram_chat_id"):
+            send_telegram_message(notify, self.config)
 
 def run_listener(config):
+    intents = discord.Intents(messages=True, guilds=True)
     client = MyClient(
-        canal_id=int(config["discord_channel_id"]),
+        canal_id=config["discord_channel_id"],
         config=config,
-        heartbeat_timeout=60
+        intents=intents
     )
-
-    import asyncio
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
-    client.run(config["discord_token"])
+    client.run(config["discord_token"], log_handler=None)

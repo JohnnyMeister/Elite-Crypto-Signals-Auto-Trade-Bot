@@ -1,79 +1,97 @@
 # trader.py
-import logging
-import random
-import time
 
-try:
-    from coinbase.wallet.client import Client as CoinbaseClient
-except ImportError:
-    CoinbaseClient = None  # Coinbase SDK não instalado
+import logging
+import json
+import time
+from binance.client import Client
+from binance.exceptions import BinanceAPIException
+from telegram_alert import send_telegram_message  # adiciona alertas telegram
 
 logging.basicConfig(level=logging.INFO)
 
+# Carregamento config
 with open("config.json") as f:
-    import json
-    config = json.load(f)
+    cfg = json.load(f)
 
-API_KEY = config.get("coinbase_api_key")
-API_SECRET = config.get("coinbase_api_secret")
-FIXED_AMOUNT = float(config.get("fixed_amount", 10.0))
-TEST_MODE = config.get("test_mode", True)
+API_KEY = cfg["binance_api_key"]
+API_SECRET = cfg["binance_api_secret"]
+FIXED_AMOUNT = float(cfg.get("fixed_amount", 10.0))
+TEST_MODE = cfg.get("test_mode", True)
 
+client = None
+if not TEST_MODE:
+    client = Client(API_KEY, API_SECRET)
 
-# Inicializa cliente real se disponível e em modo real
-coinbase = None
-if not TEST_MODE and CoinbaseClient and API_KEY and API_SECRET:
+def symbol_exists(symbol: str) -> bool:
     try:
-        coinbase = CoinbaseClient(API_KEY, API_SECRET)
-        logging.info("🔗 Cliente Coinbase inicializado.")
+        exchange_info = client.get_exchange_info()
+        symbols = [s["symbol"] for s in exchange_info["symbols"]]
+        return symbol.upper() in symbols
     except Exception as e:
-        logging.error(f"❌ Erro ao inicializar cliente Coinbase: {e}")
+        logging.error(f"Erro ao verificar símbolo: {e}")
+        return False
 
+def execute_trade(pair: str, entry_price: float, targets: list = None, stop_loss: float = None):
+    symbol = pair.replace("/", "").upper()
+    logging.info(f"💱 Iniciando trade: {symbol} a {entry_price}, valor {FIXED_AMOUNT} quote")
 
-def execute_trade(pair: str, entry_price: float, targets=None, stop_loss=None):
-    if TEST_MODE or not coinbase:
-        return simulate_trade(pair, entry_price, targets, stop_loss)
-    else:
-        return place_real_trade(pair, entry_price, targets, stop_loss)
+    if TEST_MODE:
+        msg = f"[FAKE] Simulando entrada: {symbol} a {entry_price} com {FIXED_AMOUNT} USDT\nTP={targets}\nSL={stop_loss}"
+        logging.info(msg)
+        send_telegram_message(msg, cfg)
+        return msg
 
-
-def simulate_trade(pair, entry, targets, stop):
-    logging.info(f"[FAKE TRADE] 💹 Simulando trade para {pair} a {entry}")
-    logging.info(f"🎯 TP: {targets}, 🛑 SL: {stop}, 💵 Valor: {FIXED_AMOUNT} USDC")
-    # Simula delay de execução e resultado aleatório
-    time.sleep(1)
-    simulated_result = random.choice(["Simulado com sucesso", "Falha na simulação"])
-    return simulated_result
-
-
-def place_real_trade(pair, entry, targets, stop):
-    logging.info(f"[REAL TRADE] 📈 Executando trade real: {pair} a {entry}")
+    if not symbol_exists(symbol):
+        msg = f"❌ Símbolo não encontrado na Binance: {symbol}"
+        logging.error(msg)
+        send_telegram_message(msg, cfg)
+        return msg
 
     try:
-        # Extrai símbolo base (ex: ADA) e moeda cotada (ex: USDC)
-        base_currency, quote_currency = pair.upper().split("/")
-        account = coinbase.get_account(quote_currency)
-        available_balance = float(account['balance']['amount'])
+        avg_price = float(client.get_symbol_ticker(symbol=symbol)["price"])
+        quantity = round(FIXED_AMOUNT / avg_price, 6)
+        logging.info(f"Quantia calculada: {quantity} {symbol}")
 
-        if available_balance < FIXED_AMOUNT:
-            raise ValueError(f"Saldo insuficiente. Disponível: {available_balance} {quote_currency}")
+        buy_order = client.order_market_buy(symbol=symbol, quoteOrderQty=FIXED_AMOUNT)
+        logging.info(f"✅ Ordem de compra executada: {buy_order}")
 
-        # Compra de valor fixo (market order simulada)
-        buy = coinbase.buy(
-            account['id'],
-            amount=str(FIXED_AMOUNT),
-            currency=base_currency,
-            payment_method=None,
-            commit=True
+        send_telegram_message(
+            f"✅ COMPRA EXECUTADA:\nPar: {symbol}\nPreço atual: {avg_price}\nQtd: {quantity}\nTP: {targets[0] if targets else 'n/a'}\nSL: {stop_loss}",
+            cfg
         )
 
-        logging.info(f"✅ Compra realizada: {buy}")
+        if targets and stop_loss:
+            tp = targets[0]
+            sl = stop_loss
+            logging.info(f"🚩 Criando OCO SELL TP={tp}, SL={sl}")
 
-        # Stop-loss e take-profit são operacionais apenas via webhook ou trading bot externo
-        logging.warning("⚠️ Coinbase API não suporta TP/SL nativamente. Use monitoramento externo.")
+            oco = client.create_oco_order(
+                symbol=symbol,
+                side="SELL",
+                quantity=quantity,
+                price=str(tp),
+                stopPrice=str(sl),
+                stopLimitPrice=str(sl),
+                stopLimitTimeInForce="GTC"
+            )
+            logging.info(f"✅ OCO Sell criada: {oco}")
 
-        return f"Compra real feita para {pair} a {entry}. TP/SL devem ser geridos manualmente."
+            send_telegram_message(
+                f"📍 OCO criada com sucesso\nTP: {tp}\nSL: {sl}",
+                cfg
+            )
+            return f"[REAL] Buy ID:{buy_order['orderId']}, OCO Created"
+
+        return f"[REAL] Buy feito ID:{buy_order['orderId']}"
+
+    except BinanceAPIException as e:
+        error_msg = f"❌ Binance API ERROR: {str(e)}"
+        logging.error(error_msg)
+        send_telegram_message(error_msg, cfg)
+        return error_msg
 
     except Exception as e:
-        logging.error(f"❌ Erro ao executar trade real: {e}")
-        raise
+        error_msg = f"❌ ERRO GERAL: {str(e)}"
+        logging.error(error_msg)
+        send_telegram_message(error_msg, cfg)
+        return error_msg

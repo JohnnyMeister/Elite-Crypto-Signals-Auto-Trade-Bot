@@ -1,3 +1,5 @@
+# gui.py
+
 import tkinter as tk
 from tkinter import simpledialog, messagebox
 import json
@@ -19,24 +21,31 @@ def show_gui(test_mode=False):
     root = tk.Tk()
     root.withdraw()
 
-    token = simpledialog.askstring("Token Discord", "Insere o teu token de utilizador do Discord:")
-    canal = simpledialog.askstring("Canal ID", "Insere o ID do canal do Discord onde os sinais chegam:")
-    telegram_token = simpledialog.askstring("Telegram Token", "Insere o token do teu bot do Telegram:")
-    telegram_chat_id = simpledialog.askstring("Chat ID Telegram", "Insere o ID do teu chat do Telegram:")
-    api_key = simpledialog.askstring("Coinbase API Key", "Insere a tua API Key da Coinbase:")
-    api_secret = simpledialog.askstring("Coinbase API Secret", "Insere a tua API Secret da Coinbase:")
-    fixed_amount = simpledialog.askstring("Valor por entrada", "Quanto USDC queres usar por trade (ex: 50)?")
+    mode_text = "MODO TESTE" if test_mode else "MODO REAL"
+    messagebox.showinfo("Modo de Execução", f"O programa será iniciado em {mode_text}.")
 
-    config = {
-        "discord_token": token,
-        "discord_channel_id": int(canal),
-        "telegram_token": telegram_token,
-        "telegram_chat_id": telegram_chat_id,
-        "coinbase_api_key": api_key,
-        "coinbase_api_secret": api_secret,
-        "fixed_amount": float(fixed_amount),
-        "test_mode": test_mode
-    }
+    token = simpledialog.askstring("Token Discord", "Insere o teu token de utilizador do Discord:")
+    canal = simpledialog.askstring("ID do Canal Discord", "Insere o ID do canal onde os sinais chegam:")
+    telegram_token = simpledialog.askstring("Token Telegram", "Insere o token do bot do Telegram:")
+    telegram_chat_id = simpledialog.askstring("Chat ID Telegram", "Insere o ID do teu chat do Telegram:")
+    api_key = simpledialog.askstring("Binance API Key", "Insere a tua API Key da Binance:")
+    api_secret = simpledialog.askstring("Binance API Secret", "Insere a tua API Secret da Binance:")
+    fixed_amount = simpledialog.askstring("Valor por trade (USDT)", "Quanto USDT queres usar por entrada (ex: 50)?")
+
+    try:
+        config = {
+            "discord_token": token.strip(),
+            "canal_id": int(canal.strip()),
+            "telegram_token": telegram_token.strip(),
+            "telegram_chat_id": telegram_chat_id.strip(),
+            "binance_api_key": api_key.strip(),
+            "binance_api_secret": api_secret.strip(),
+            "fixed_amount": float(fixed_amount.strip()),
+            "test_mode": test_mode
+        }
+    except Exception as e:
+        messagebox.showerror("Erro", f"Ocorreu um erro ao validar os dados: {e}")
+        return
 
     save_config(config)
     messagebox.showinfo("✅ Sucesso", "Configuração salva com sucesso!")
