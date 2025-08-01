@@ -1,85 +1,79 @@
 # trader.py
+import logging
+import random
 import time
-import hmac
-import hashlib
-import requests
-import json
-import base64
-from urllib.parse import urlencode
+
+try:
+    from coinbase.wallet.client import Client as CoinbaseClient
+except ImportError:
+    CoinbaseClient = None  # Coinbase SDK não instalado
+
+logging.basicConfig(level=logging.INFO)
 
 with open("config.json") as f:
+    import json
     config = json.load(f)
 
-API_KEY = config["coinbase_api_key"]
-API_SECRET = config["coinbase_api_secret"].encode()
-API_PASSPHRASE = config.get("coinbase_passphrase", "")
-BASE_URL = "https://api.exchange.coinbase.com"
+API_KEY = config.get("coinbase_api_key")
+API_SECRET = config.get("coinbase_api_secret")
+FIXED_AMOUNT = float(config.get("fixed_amount", 10.0))
+TEST_MODE = config.get("test_mode", True)
 
-TRADE_AMOUNT = float(config.get("trade_amount", 10.0))  # USDC por trade
-FAKE_MODE = config.get("mode") == "true"
 
-def get_timestamp():
-    return str(time.time())
-
-def get_signature(timestamp, method, request_path, body):
-    message = f"{timestamp}{method}{request_path}{body}"
-    hmac_key = base64.b64decode(API_SECRET)
-    signature = hmac.new(hmac_key, message.encode(), hashlib.sha256)
-    return base64.b64encode(signature.digest()).decode()
-
-def make_request(method, path, body=""):
-    timestamp = get_timestamp()
-    signature = get_signature(timestamp, method.upper(), path, body)
-
-    headers = {
-        "CB-ACCESS-KEY": API_KEY,
-        "CB-ACCESS-SIGN": signature,
-        "CB-ACCESS-TIMESTAMP": timestamp,
-        "CB-ACCESS-PASSPHRASE": API_PASSPHRASE,
-        "Content-Type": "application/json"
-    }
-
-    url = BASE_URL + path
-
-    if method.upper() == "GET":
-        response = requests.get(url, headers=headers)
-    else:
-        response = requests.post(url, headers=headers, data=body)
-
-    if not response.ok:
-        print(f"❌ Erro na requisição: {response.status_code} {response.text}")
-    return response.json()
-
-def place_order(symbol: str, price: float):
-    base, quote = symbol.split("/")
-    coinbase_symbol = f"{base}-{quote}"  # Ex: BTC-USDC
-
-    body_dict = {
-        "type": "limit",
-        "side": "buy",
-        "product_id": coinbase_symbol,
-        "price": str(price),
-        "size": str(TRADE_AMOUNT / price),  # quantidade a comprar
-        "post_only": True
-    }
-
-    body = json.dumps(body_dict)
-    path = "/orders"
-
-    print(f"🚀 {'[FAKE]' if FAKE_MODE else ''} Enviando ordem para {symbol}...")
-
-    if FAKE_MODE:
-        print(f"💡 Modo FAKE: Compra simulada de {TRADE_AMOUNT / price:.4f} {base} a {price} {quote}.")
-        return
-
-    response = make_request("POST", path, body)
-    if response.get("id"):
-        print(f"✅ Ordem enviada com sucesso! ID: {response['id']}")
-    else:
-        print("⚠️ Falha ao enviar ordem.")
-
-def execute_trade(pair: str, price: float):
+# Inicializa cliente real se disponível e em modo real
+coinbase = None
+if not TEST_MODE and CoinbaseClient and API_KEY and API_SECRET:
     try:
-        place_order(pair, price)
+        coinbase = CoinbaseClient(API_KEY, API_SECRET)
+        logging.info("🔗 Cliente Coinbase inicializado.")
     except Exception as e:
-        print(f"⚠️ Erro ao executar trade: {e}")
+        logging.error(f"❌ Erro ao inicializar cliente Coinbase: {e}")
+
+
+def execute_trade(pair: str, entry_price: float, targets=None, stop_loss=None):
+    if TEST_MODE or not coinbase:
+        return simulate_trade(pair, entry_price, targets, stop_loss)
+    else:
+        return place_real_trade(pair, entry_price, targets, stop_loss)
+
+
+def simulate_trade(pair, entry, targets, stop):
+    logging.info(f"[FAKE TRADE] 💹 Simulando trade para {pair} a {entry}")
+    logging.info(f"🎯 TP: {targets}, 🛑 SL: {stop}, 💵 Valor: {FIXED_AMOUNT} USDC")
+    # Simula delay de execução e resultado aleatório
+    time.sleep(1)
+    simulated_result = random.choice(["Simulado com sucesso", "Falha na simulação"])
+    return simulated_result
+
+
+def place_real_trade(pair, entry, targets, stop):
+    logging.info(f"[REAL TRADE] 📈 Executando trade real: {pair} a {entry}")
+
+    try:
+        # Extrai símbolo base (ex: ADA) e moeda cotada (ex: USDC)
+        base_currency, quote_currency = pair.upper().split("/")
+        account = coinbase.get_account(quote_currency)
+        available_balance = float(account['balance']['amount'])
+
+        if available_balance < FIXED_AMOUNT:
+            raise ValueError(f"Saldo insuficiente. Disponível: {available_balance} {quote_currency}")
+
+        # Compra de valor fixo (market order simulada)
+        buy = coinbase.buy(
+            account['id'],
+            amount=str(FIXED_AMOUNT),
+            currency=base_currency,
+            payment_method=None,
+            commit=True
+        )
+
+        logging.info(f"✅ Compra realizada: {buy}")
+
+        # Stop-loss e take-profit são operacionais apenas via webhook ou trading bot externo
+        logging.warning("⚠️ Coinbase API não suporta TP/SL nativamente. Use monitoramento externo.")
+
+        return f"Compra real feita para {pair} a {entry}. TP/SL devem ser geridos manualmente."
+
+    except Exception as e:
+        logging.error(f"❌ Erro ao executar trade real: {e}")
+        raise

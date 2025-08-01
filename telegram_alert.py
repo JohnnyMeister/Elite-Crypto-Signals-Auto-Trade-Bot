@@ -1,21 +1,29 @@
+# telegram_alert.py
 import requests
+import logging
 
-TELEGRAM_TOKEN = '8082678835:AAFswQELa4IcjKx1-yp4EyCInMrbx66Ri_s'
-CHAT_ID = '5217154830'
-
-def send_telegram_alert(message):
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    data = {
-        "chat_id": CHAT_ID,
-        "text": message,
-        "parse_mode": "HTML"
-    }
-
+def send_telegram_message(config, message):
+    """
+    Envia uma mensagem para o Telegram usando o bot e chat ID definidos na config.
+    """
     try:
-        response = requests.post(url, data=data)
-        if response.status_code != 200:
-            print("❌ Falha ao enviar alerta Telegram:", response.text)
-        else:
-            print("📨 Alerta Telegram enviado!")
+        token = config.get("telegram_token")
+        chat_id = config.get("telegram_chat_id")
+
+        if not token or not chat_id:
+            logging.warning("⚠️ Telegram token ou chat_id não configurados.")
+            return
+
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        payload = {
+            "chat_id": chat_id,
+            "text": message,
+            "parse_mode": "Markdown"
+        }
+
+        response = requests.post(url, data=payload)
+        response.raise_for_status()
+
+        logging.info("📨 Mensagem enviada ao Telegram.")
     except Exception as e:
-        print("❌ Erro no envio Telegram:", e)
+        logging.error(f"❌ Erro ao enviar mensagem Telegram: {str(e)}")

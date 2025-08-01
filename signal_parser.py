@@ -3,22 +3,37 @@ import re
 from trader import execute_trade
 
 def parse_signal(message: str):
-    pair_match = re.search(r"#(\w+)/(USDT|USDC)", message)
-    price_match = re.search(r"(Buy|Entry) around (\d+(?:\.\d+)?)", message, re.IGNORECASE)
+    """
+    Extrai par de trading e preço de entrada de uma mensagem.
+    Suporta múltiplas variações como:
+    - "Buy around 0.08499"
+    - "Entry around 0.7895"
+    - "Buy @ 0.120"
+    - "Entry: 0.675"
+    """
 
-    if pair_match and price_match:
-        symbol = pair_match.group(1)
-        stable = pair_match.group(2)
-        entry_price = float(price_match.group(2))
+    # Procurar par como BTC/USDT ou ADA/USDC
+    pair_match = re.search(r"#?(\w{2,10})\s*/\s*(USDT|USDC)", message, re.IGNORECASE)
+    if not pair_match:
+        return False
 
-        pair = f"{symbol}/{stable}"
-        print(f"📈 Sinal identificado: {pair} @ {entry_price}")
+    base, quote = pair_match.group(1).upper(), pair_match.group(2).upper()
+    pair = f"{base}/{quote}"
 
-        execute_trade(pair, entry_price)
-        return {
-            "pair": pair,
-            "entry_price": entry_price
-        }
+    # Procurar entrada (diversas variações)
+    price_patterns = [
+        r"(?i)buy\s*(?:around|@|at)?\s*([0-9]*\.?[0-9]+)",
+        r"(?i)entry\s*(?:around|@|at|:)?\s*([0-9]*\.?[0-9]+)"
+    ]
 
-    print("⚠️ Nenhum sinal válido encontrado na mensagem.")
+    for pattern in price_patterns:
+        price_match = re.search(pattern, message)
+        if price_match:
+            try:
+                price = float(price_match.group(1))
+                return {"pair": pair, "price": price}
+            except ValueError:
+                continue
+
     return False
+
