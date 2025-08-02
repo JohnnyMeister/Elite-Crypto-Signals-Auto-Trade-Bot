@@ -1,59 +1,28 @@
-import asyncio
-import sys
-
-if sys.platform.startswith('win'):
-    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
-
+# main.py
 
 import os
 import json
-import tkinter as tk
-from tkinter import messagebox
-from subprocess import run
+import time
+from gui import show_gui
 from Selfbot_listener import run_listener
 
-CONFIG_PATH = "config.json"
+CONFIG_FILE = "config.json"
 
-def ask_test_mode():
-    root = tk.Tk()
-    root.withdraw()
-    response = messagebox.askyesno("Modo Teste", "Deseja iniciar o programa em MODO TESTE?")
-    return response
+# Verifica se config existe, senão chama o GUI para criar
+if not os.path.exists(CONFIG_FILE):
+    print("🔧 Config.json não encontrado. A abrir GUI para criação...")
+    show_gui()  # Abre GUI para criar config
 
-def create_default_config(test_mode: bool):
-    # Passa o valor de test_mode como argumento para o GUI
-    from gui import show_gui
-    show_gui(test_mode)
-    if not os.path.exists(CONFIG_PATH):
-        raise FileNotFoundError("Configuração não criada.")
-    with open(CONFIG_PATH, "r+") as f:
-        config = json.load(f)
-        config["test_mode"] = test_mode
-        f.seek(0)
-        json.dump(config, f, indent=2)
-        f.truncate()
+# Verifica se o arquivo foi criado corretamente após o GUI
+if not os.path.exists(CONFIG_FILE):
+    raise FileNotFoundError("❌ Configuração não criada corretamente. O programa será encerrado.")
 
-def load_config():
-    with open(CONFIG_PATH, "r") as f:
-        return json.load(f)
+# Aguarda um momento para garantir que o arquivo esteja salvo
+time.sleep(1)
 
-if __name__ == "__main__":
-    test_mode = ask_test_mode()
+# Carrega a configuração
+with open(CONFIG_FILE, "r") as f:
+    config = json.load(f)
 
-    if not os.path.exists(CONFIG_PATH):
-        print("🔧 Criando nova configuração...")
-        create_default_config(test_mode)
-    else:
-        # Atualiza apenas o valor de test_mode
-        with open(CONFIG_PATH, "r+") as f:
-            config = json.load(f)
-            config["test_mode"] = test_mode
-            f.seek(0)
-            json.dump(config, f, indent=2)
-            f.truncate()
-
-    config = load_config()
-    print("🚀 Iniciando o bot com as configurações:")
-    print(json.dumps(config, indent=2))
-
-    run_listener(config)
+# Executa o listener principal
+run_listener(config)
