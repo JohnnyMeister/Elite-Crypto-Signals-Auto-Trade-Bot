@@ -2,27 +2,54 @@
 
 import os
 import json
-import time
 from gui import show_gui
 from Selfbot_listener import run_listener
 
 CONFIG_FILE = "config.json"
 
-# Verifica se config existe, senão chama o GUI para criar
-if not os.path.exists(CONFIG_FILE):
-    print("🔧 Config.json não encontrado. A abrir GUI para criação...")
-    show_gui()  # Abre GUI para criar config
+def create_default_config():
+    default_config = {
+        "binance_api_key": "",
+        "binance_api_secret": "",
+        "telegram_token": "",
+        "telegram_chat_id": "",
+        "canal_id": "",
+        "fixed_amount": 10.0,
+        "test_mode": True
+    }
+    with open(CONFIG_FILE, "w") as f:
+        json.dump(default_config, f, indent=4)
+    print("✅ config.json criado. A abrir GUI para preencher os dados...")
 
-# Verifica se o arquivo foi criado corretamente após o GUI
-if not os.path.exists(CONFIG_FILE):
-    raise FileNotFoundError("❌ Configuração não criada corretamente. O programa será encerrado.")
+def load_config():
+    if not os.path.exists(CONFIG_FILE):
+        create_default_config()
+        show_gui(True)
+    with open(CONFIG_FILE) as f:
+        return json.load(f)
 
-# Aguarda um momento para garantir que o arquivo esteja salvo
-time.sleep(1)
+def ask_test_mode():
+    while True:
+        resposta = input("❓ Desejas iniciar em modo de teste (fake trades)? (s/n): ").strip().lower()
+        if resposta in ["s", "sim"]:
+            return True
+        elif resposta in ["n", "nao", "não"]:
+            return False
+        else:
+            print("⚠️ Resposta inválida. Digita 's' ou 'n'.")
 
-# Carrega a configuração
-with open(CONFIG_FILE, "r") as f:
-    config = json.load(f)
+if __name__ == "__main__":
+    config = load_config()
 
-# Executa o listener principal
-run_listener(config)
+    print("\n📌 CONFIG CARREGADA:")
+    for k, v in config.items():
+        print(f"  - {k}: {v}")
+
+    # Perguntar SEMPRE se quer modo de teste
+    test_mode = ask_test_mode()
+    config["test_mode"] = test_mode
+
+    print(f"\n🚀 A iniciar em modo {'TESTE' if test_mode else 'REAL'}...\n")
+
+    # Iniciar o listener com o config atualizado
+    run_listener(config)

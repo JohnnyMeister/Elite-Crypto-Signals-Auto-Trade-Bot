@@ -1,0 +1,9 @@
+{
+    "binance_api_key": "",
+    "binance_api_secret": "",
+    "telegram_token": "",
+    "telegram_chat_id": "",
+    "canal_id": "",
+    "fixed_amount": 10.0,
+    "test_mode": true
+}
