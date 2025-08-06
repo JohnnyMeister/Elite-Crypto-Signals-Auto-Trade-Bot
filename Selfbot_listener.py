@@ -5,13 +5,12 @@ import logging
 from signal_parser import parse_signal
 from trader import execute_trade
 from telegram_alert import send_telegram_message
-import asyncio
 
 logging.basicConfig(level=logging.INFO)
 
 class MyClient(discord.Client):
-    def __init__(self, canal_id, config, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, canal_id, config):
+        super().__init__()
         self.canal_id = canal_id
         self.config = config
 
@@ -22,7 +21,7 @@ class MyClient(discord.Client):
         if message.author.id == self.user.id:
             return
 
-        if message.channel.id != self.canal_id:
+        if message.channel.id != int(self.canal_id):
             return
 
         logging.info(f"📥 Nova mensagem recebida de {message.author}: {message.content[:60]}...")
@@ -46,10 +45,9 @@ class MyClient(discord.Client):
             send_telegram_message(notify, self.config)
 
 def run_listener(config):
-    intents = discord.Intents(messages=True, guilds=True)
     client = MyClient(
-        canal_id=config["discord_channel_id"],
-        config=config,
-        intents=intents
+        canal_id=config["canal_id"],
+        config=config
     )
-    client.run(config["discord_token"], log_handler=None)
+    # Selfbots usam o token da própria conta (modo user), sem "bot=" nem intents
+    client.run(config["discord_token"])

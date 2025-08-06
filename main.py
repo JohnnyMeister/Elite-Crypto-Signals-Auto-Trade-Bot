@@ -1,4 +1,10 @@
 # main.py
+import asyncio
+import platform
+
+# ⚠️ Corrige problemas com aiodns no Windows
+if platform.system() == "Windows":
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 import os
 import json

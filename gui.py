@@ -20,10 +20,7 @@ def load_config():
 def show_gui(test_mode=False):
     root = tk.Tk()
     root.withdraw()
-
-    mode_text = "MODO TESTE" if test_mode else "MODO REAL"
-    messagebox.showinfo("Modo de Execução", f"O programa será iniciado em {mode_text}.")
-
+    
     token = simpledialog.askstring("Token Discord", "Insere o teu token de utilizador do Discord:")
     canal = simpledialog.askstring("ID do Canal Discord", "Insere o ID do canal onde os sinais chegam:")
     telegram_token = simpledialog.askstring("Token Telegram", "Insere o token do bot do Telegram:")
