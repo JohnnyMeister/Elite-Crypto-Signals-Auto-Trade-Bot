@@ -1,0 +1,176 @@
+#!/usr/bin/env python3
+"""
+Script para testar a API do Google Gemini
+"""
+
+import json
+import sys
+
+def load_config():
+    """Carrega a configuração"""
+    try:
+        with open("config.json", "r") as f:
+            return json.load(f)
+    except FileNotFoundError:
+        print("❌ config.json not found")
+        sys.exit(1)
+    except Exception as e:
+        print(f"❌ Error reading config: {e}")
+        sys.exit(1)
+
+def test_gemini(api_key: str):
+    """Testa a API do Gemini"""
+    print("=" * 60)
+    print("  Google Gemini API Tester")
+    print("=" * 60)
+    print()
+    
+    # Importa biblioteca
+    try:
+        import google.generativeai as genai
+        print("✓ google-generativeai library imported")
+    except ImportError:
+        print("❌ google-generativeai not installed")
+        print("   Run: pip install google-generativeai")
+        sys.exit(1)
+    
+    # Configura API
+    try:
+        genai.configure(api_key=api_key)
+        print("✓ API key configured")
+    except Exception as e:
+        print(f"❌ Failed to configure API: {e}")
+        sys.exit(1)
+    
+    print()
+    print("🔍 Listing available models...")
+    print()
+    
+    # Lista modelos disponíveis
+    try:
+        models = genai.list_models()
+        available_models = []
+        
+        for model in models:
+            # Verifica se suporta generateContent
+            if 'generateContent' in model.supported_generation_methods:
+                available_models.append(model.name)
+                print(f"  ✓ {model.name}")
+                print(f"    Display Name: {model.display_name}")
+                print(f"    Description: {model.description[:60]}...")
+                print()
+        
+        if not available_models:
+            print("❌ No models available for generateContent")
+            sys.exit(1)
+        
+        print("=" * 60)
+        print(f"✅ Found {len(available_models)} available models")
+        print("=" * 60)
+        
+    except Exception as e:
+        print(f"❌ Failed to list models: {e}")
+        print()
+        print("Common issues:")
+        print("  1. Invalid API key")
+        print("  2. API key not activated")
+        print("  3. Billing not enabled (if required)")
+        print("  4. Region restrictions")
+        sys.exit(1)
+    
+    print()
+    print("🧪 Testing content generation...")
+    print()
+    
+    # Testa geração com o primeiro modelo disponível
+    test_model = available_models[0]
+    print(f"Testing with: {test_model}")
+    print()
+    
+    try:
+        model = genai.GenerativeModel(test_model)
+        
+        # Teste simples
+        test_prompt = """Extract trading signal to JSON:
+        
+BTC/USDT LONG
+Entry: 45000
+Targets: 46000, 47000
+Stop Loss: 44000
+
+Return only JSON with keys: pair, entry, targets (array), stop_loss, side"""
+        
+        response = model.generate_content(
+            test_prompt,
+            generation_config={"temperature": 0.0}
+        )
+        
+        result = response.text
+        print("Response:")
+        print(result)
+        print()
+        
+        # Tenta parsear como JSON
+        try:
+            parsed = json.loads(result)
+            print("✅ Valid JSON response!")
+            print(json.dumps(parsed, indent=2))
+        except json.JSONDecodeError:
+            print("⚠ Response is not JSON, but generation worked")
+        
+        print()
+        print("=" * 60)
+        print("✅ SUCCESS! Gemini API is working")
+        print("=" * 60)
+        print()
+        print(f"Recommended model for config.json: {test_model}")
+        print()
+        
+        return test_model
+        
+    except Exception as e:
+        print(f"❌ Failed to generate content: {e}")
+        print()
+        print("The API key works but content generation failed.")
+        print("This might be a temporary issue or model restriction.")
+        sys.exit(1)
+
+def main():
+    config = load_config()
+    
+    api_key = config.get("gemini_api_key", "").strip()
+    
+    if not api_key:
+        print("❌ gemini_api_key not configured in config.json")
+        print()
+        print("To get an API key:")
+        print("1. Go to: https://aistudio.google.com/app/apikey")
+        print("2. Click 'Create API Key' or 'Get API Key'")
+        print("3. Copy the key (starts with 'AIzaSy')")
+        print("4. Add to config.json:")
+        print('   "gemini_api_key": "YOUR_KEY_HERE"')
+        sys.exit(1)
+    
+    print(f"Using API key: {api_key[:20]}...{api_key[-4:]}")
+    print()
+    
+    recommended_model = test_gemini(api_key)
+    
+    # Atualiza config.json com modelo recomendado
+    if recommended_model:
+        print("💡 Updating config.json with recommended model...")
+        config["gemini_model"] = recommended_model
+        try:
+            with open("config.json", "w") as f:
+                json.dump(config, f, indent=4)
+            print("✓ config.json updated!")
+        except Exception as e:
+            print(f"⚠ Could not update config: {e}")
+            print(f"Manually set: \"gemini_model\": \"{recommended_model}\"")
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n\nCancelled by user")
+        sys.exit(1)
